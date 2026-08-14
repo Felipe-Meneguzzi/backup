@@ -2,7 +2,7 @@
 
 # ========================================
 # Gerar senha determinística manualmente
-# Uso: ./gerar-senha.sh vaultwarden-backup-20260814.sqlite3.gpg
+# Uso: ./gerar-senha.sh vaultwarden-backup-20260814.sqlite3.enc
 # ========================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

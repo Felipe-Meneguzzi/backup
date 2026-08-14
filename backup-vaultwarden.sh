@@ -2,6 +2,7 @@
 
 # ========================================
 # Backup Vaultwarden com senha determinística
+# Usa OpenSSL AES-256-CBC para encriptação
 # Pega seed de arquivo externo
 # ========================================
 
@@ -25,7 +26,7 @@ SEED=$(cat "$SEED_FILE" | tr -d '\n')
 
 # Data
 DATE=$(date +%Y%m%d)
-BACKUP_FILE="vaultwarden-backup-${DATE}.sqlite3.gpg"
+BACKUP_FILE="vaultwarden-backup-${DATE}.sqlite3.enc"
 
 # Criar diretório de backups se não existir
 mkdir -p "$BACKUP_DIR"
@@ -39,14 +40,14 @@ if [ ! -f "$DB_PATH" ]; then
     exit 1
 fi
 
-gpg --symmetric --cipher-algo AES256 --batch --passphrase "$PASSWORD" "$DB_PATH" -o "$BACKUP_DIR/$BACKUP_FILE"
+openssl enc -aes-256-cbc -pbkdf2 -salt -in "$DB_PATH" -out "$BACKUP_DIR/$BACKUP_FILE" -k "$PASSWORD" -P
 
 # Log
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] OK Backup criado: $BACKUP_FILE" | tee -a "$LOG_FILE"
 
 # Limpeza: manter últimos 30 backups
-BACKUPS=$(ls -1 "$BACKUP_DIR"/vaultwarden-backup-*.sqlite3.gpg 2>/dev/null | wc -l)
+BACKUPS=$(ls -1 "$BACKUP_DIR"/vaultwarden-backup-*.sqlite3.enc 2>/dev/null | wc -l)
 if [ "$BACKUPS" -gt 30 ]; then
-    ls -1t "$BACKUP_DIR"/vaultwarden-backup-*.sqlite3.gpg | tail -n +31 | xargs rm -f
+    ls -1t "$BACKUP_DIR"/vaultwarden-backup-*.sqlite3.enc | tail -n +31 | xargs rm -f
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backups antigos removidos (mantém últimos 30)" | tee -a "$LOG_FILE"
 fi

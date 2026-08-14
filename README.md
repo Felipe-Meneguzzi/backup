@@ -7,21 +7,21 @@ Sistema de backup automático para Vaultwarden que gera senhas **determinística
 ## Como Funciona
 
 1. **Determinístico:** Mesma senha toda vez para o mesmo arquivo
-2. **Seguro:** Usa SHA256 + seed forte
+2. **Seguro:** Usa SHA256 + seed forte + OpenSSL AES-256-CBC
 3. **Portável:** Recuperar sem o servidor original
 4. **Automatizado:** Cron executa diariamente
 
 ### Fluxo
 
 ```
-Nome arquivo: vaultwarden-backup-20260814.sqlite3.gpg
+Nome arquivo: vaultwarden-backup-20260814.sqlite3.enc
 Seed: sua_seed_super_secreta_2026
 
 SHA256(nome + seed) → 32 primeiros chars
 ↓
 Senha: a3f2b1c9d8e7f6g5h4i3j2k1l0m9n8o
 
-Encriptar database com essa senha
+OpenSSL AES-256-CBC encripta database com essa senha
 ```
 
 ## Instalação
@@ -44,18 +44,20 @@ sua_seed_super_secreta_e_forte_aqui_2026
 chmod 600 ~/homelab/backup/.backup-seed
 ```
 
-### 2. Criar script de backup
+### 2. Criar scripts de backup
 
 ```bash
 nano ~/homelab/backup/backup-vaultwarden.sh
+nano ~/homelab/backup/recuperar-vaultwarden.sh
+nano ~/homelab/backup/gerar-senha.sh
 ```
 
-Copia o script (ver seção Scripts).
+Copia os scripts (ver seção Scripts).
 
-Faz executável:
+Faz executáveis:
 
 ```bash
-chmod +x ~/homelab/backup/backup-vaultwarden.sh
+chmod +x ~/homelab/backup/*.sh
 ```
 
 ### 3. Configurar cron
@@ -80,6 +82,7 @@ Adiciona:
 
 # ========================================
 # Backup Vaultwarden com senha determinística
+# Usa OpenSSL AES-256-CBC para encriptação
 # Pega seed de arquivo externo
 # ========================================
 
@@ -103,7 +106,7 @@ SEED=$(cat "$SEED_FILE" | tr -d '\n')
 
 # Data
 DATE=$(date +%Y%m%d)
-BACKUP_FILE="vaultwarden-backup-${DATE}.sqlite3.gpg"
+BACKUP_FILE="vaultwarden-backup-${DATE}.sqlite3.enc"
 
 # Criar diretório de backups se não existir
 mkdir -p "$BACKUP_DIR"
@@ -117,15 +120,15 @@ if [ ! -f "$DB_PATH" ]; then
     exit 1
 fi
 
-gpg --symmetric --cipher-algo AES256 --batch --passphrase "$PASSWORD" "$DB_PATH" -o "$BACKUP_DIR/$BACKUP_FILE"
+openssl enc -aes-256-cbc -pbkdf2 -salt -in "$DB_PATH" -out "$BACKUP_DIR/$BACKUP_FILE" -k "$PASSWORD" -P
 
 # Log
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] OK Backup criado: $BACKUP_FILE" | tee -a "$LOG_FILE"
 
 # Limpeza: manter últimos 30 backups
-BACKUPS=$(ls -1 "$BACKUP_DIR"/vaultwarden-backup-*.sqlite3.gpg 2>/dev/null | wc -l)
+BACKUPS=$(ls -1 "$BACKUP_DIR"/vaultwarden-backup-*.sqlite3.enc 2>/dev/null | wc -l)
 if [ "$BACKUPS" -gt 30 ]; then
-    ls -1t "$BACKUP_DIR"/vaultwarden-backup-*.sqlite3.gpg | tail -n +31 | xargs rm -f
+    ls -1t "$BACKUP_DIR"/vaultwarden-backup-*.sqlite3.enc | tail -n +31 | xargs rm -f
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backups antigos removidos (mantém últimos 30)" | tee -a "$LOG_FILE"
 fi
 ```
@@ -137,7 +140,8 @@ fi
 
 # ========================================
 # Recuperar Vaultwarden de backup
-# Uso: ./recuperar-vaultwarden.sh vaultwarden-backup-20260814.sqlite3.gpg
+# Usa OpenSSL AES-256-CBC para desencriptação
+# Uso: ./recuperar-vaultwarden.sh vaultwarden-backup-20260814.sqlite3.enc
 # ========================================
 
 set -e
@@ -147,10 +151,10 @@ SEED_FILE="$SCRIPT_DIR/.backup-seed"
 BACKUP_FILE="$1"
 
 if [ -z "$BACKUP_FILE" ]; then
-    echo "Uso: $0 <arquivo_backup.gpg>"
+    echo "Uso: $0 <arquivo_backup.enc>"
     echo ""
     echo "Exemplo:"
-    echo "  $0 backups/vaultwarden-backup-20260814.sqlite3.gpg"
+    echo "  $0 backups/vaultwarden-backup-20260814.sqlite3.enc"
     exit 1
 fi
 
@@ -177,7 +181,7 @@ PASSWORD=$(echo -n "${FILENAME}${SEED}" | sha256sum | cut -c1-32)
 
 # Desencriptar
 echo "[*] Desencriptando $FILENAME..."
-gpg --decrypt --batch --passphrase "$PASSWORD" "$BACKUP_FILE" > db.sqlite3
+openssl enc -aes-256-cbc -pbkdf2 -d -in "$BACKUP_FILE" -out db.sqlite3 -k "$PASSWORD"
 
 if [ $? -eq 0 ]; then
     echo "[OK] Database recuperado em: db.sqlite3"
@@ -199,7 +203,7 @@ fi
 
 # ========================================
 # Gerar senha determinística manualmente
-# Uso: ./gerar-senha.sh vaultwarden-backup-20260814.sqlite3.gpg
+# Uso: ./gerar-senha.sh vaultwarden-backup-20260814.sqlite3.enc
 # ========================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -235,8 +239,8 @@ echo "Senha:   $PASSWORD"
 ├── gerar-senha.sh
 ├── backup.log
 └── backups/
-    ├── vaultwarden-backup-20260814.sqlite3.gpg
-    ├── vaultwarden-backup-20260815.sqlite3.gpg
+    ├── vaultwarden-backup-20260814.sqlite3.enc
+    ├── vaultwarden-backup-20260815.sqlite3.enc
     └── ...
 ```
 
@@ -262,13 +266,29 @@ tail -f ~/homelab/backup/backup.log
 
 ```bash
 cd ~/homelab/backup
-./recuperar-vaultwarden.sh backups/vaultwarden-backup-20260814.sqlite3.gpg
+./recuperar-vaultwarden.sh backups/vaultwarden-backup-20260814.sqlite3.enc
 ```
 
 ### Gerar senha manualmente
 
 ```bash
-~/homelab/backup/gerar-senha.sh vaultwarden-backup-20260814.sqlite3.gpg
+~/homelab/backup/gerar-senha.sh vaultwarden-backup-20260814.sqlite3.enc
+```
+
+## Encriptação
+
+### OpenSSL AES-256-CBC com PBKDF2
+
+- **Algoritmo:** AES-256-CBC (padrão militar)
+- **Derivação de chave:** PBKDF2 (mais seguro que MD5)
+- **Salt:** Gerado automaticamente
+- **Extensão:** `.enc` (encrypted)
+
+### Verificar integridade do backup
+
+```bash
+ls -lh ~/homelab/backup/backups/
+file ~/homelab/backup/backups/vaultwarden-backup-20260814.sqlite3.enc
 ```
 
 ## Segurança
@@ -276,7 +296,7 @@ cd ~/homelab/backup
 ### O que guardar
 
 - Arquivo `.backup-seed` (guardado seguro, NÃO no GitHub)
-- Arquivos `.gpg` (encriptados, podem ir pra nuvem)
+- Arquivos `.enc` (encriptados, podem ir pra nuvem)
 - Scripts (público no GitHub)
 
 ### O que NÃO guardar
@@ -291,17 +311,18 @@ cd ~/homelab/backup
 backup.log
 backups/
 db.sqlite3
+*.enc
 ```
 
 ## Recuperação de Emergência
 
 Se perder o servidor inteiro:
 
-1. Pega o arquivo `.gpg` do backup (Google Drive, GitHub, etc)
+1. Pega o arquivo `.enc` do backup (Google Drive, GitHub, etc)
 2. Copia `gerar-senha.sh` e `.backup-seed` localmente
-3. Roda: `./gerar-senha.sh vaultwarden-backup-20260814.sqlite3.gpg`
+3. Roda: `./gerar-senha.sh vaultwarden-backup-20260814.sqlite3.enc`
 4. Copia a senha gerada
-5. Desencripta: `gpg --decrypt --batch --passphrase "senha_aqui" vaultwarden-backup-20260814.sqlite3.gpg > db.sqlite3`
+5. Desencripta: `openssl enc -aes-256-cbc -pbkdf2 -d -in vaultwarden-backup-20260814.sqlite3.enc -out db.sqlite3 -k "senha_aqui"`
 6. Restaura num novo Vaultwarden
 
 ## Cron Configuration
@@ -337,12 +358,13 @@ Verifica path no script — deve ser `$HOME/homelab/vaultwarden/data/db.sqlite3`
 Senha incorreta. Regera usando `gerar-senha.sh`:
 
 ```bash
-./gerar-senha.sh vaultwarden-backup-20260814.sqlite3.gpg
+./gerar-senha.sh vaultwarden-backup-20260814.sqlite3.enc
 ```
 
 ## Notas
 
 - Seed é determinística: sempre gera mesma senha pro mesmo arquivo
-- GPG usa AES256: padrão forte
+- OpenSSL usa AES-256-CBC + PBKDF2: padrão forte
 - Mantém últimos 30 backups automaticamente
 - Log registra todo backup realizado
+- Extensão `.enc` identifica arquivos encriptados

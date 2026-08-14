@@ -2,7 +2,8 @@
 
 # ========================================
 # Recuperar Vaultwarden de backup
-# Uso: ./recuperar-vaultwarden.sh vaultwarden-backup-20260814.sqlite3.gpg
+# Usa OpenSSL AES-256-CBC para desencriptação
+# Uso: ./recuperar-vaultwarden.sh vaultwarden-backup-20260814.sqlite3.enc
 # ========================================
 
 set -e
@@ -12,10 +13,10 @@ SEED_FILE="$SCRIPT_DIR/.backup-seed"
 BACKUP_FILE="$1"
 
 if [ -z "$BACKUP_FILE" ]; then
-    echo "Uso: $0 <arquivo_backup.gpg>"
+    echo "Uso: $0 <arquivo_backup.enc>"
     echo ""
     echo "Exemplo:"
-    echo "  $0 backups/vaultwarden-backup-20260814.sqlite3.gpg"
+    echo "  $0 backups/vaultwarden-backup-20260814.sqlite3.enc"
     exit 1
 fi
 
@@ -42,7 +43,7 @@ PASSWORD=$(echo -n "${FILENAME}${SEED}" | sha256sum | cut -c1-32)
 
 # Desencriptar
 echo "[*] Desencriptando $FILENAME..."
-gpg --decrypt --batch --passphrase "$PASSWORD" "$BACKUP_FILE" > db.sqlite3
+openssl enc -aes-256-cbc -pbkdf2 -d -in "$BACKUP_FILE" -out db.sqlite3 -k "$PASSWORD"
 
 if [ $? -eq 0 ]; then
     echo "[OK] Database recuperado em: db.sqlite3"
