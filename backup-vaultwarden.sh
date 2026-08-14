@@ -34,13 +34,25 @@ mkdir -p "$BACKUP_DIR"
 # Gerar senha determinística (32 chars)
 PASSWORD=$(echo -n "${BACKUP_FILE}${SEED}" | sha256sum | cut -c1-32)
 
-# Fazer backup
+# Verificar se database existe
 if [ ! -f "$DB_PATH" ]; then
     echo "[ERROR] Database não encontrado: $DB_PATH" | tee -a "$LOG_FILE"
     exit 1
 fi
 
+# Parar Vaultwarden antes do backup
+echo "[*] Parando Vaultwarden..." | tee -a "$LOG_FILE"
+docker compose -f $HOME/homelab/vaultwarden/docker-compose.yml stop
+
+# Aguardar um pouco pra ter certeza
+sleep 2
+
+# Fazer backup
 openssl enc -aes-256-cbc -pbkdf2 -salt -in "$DB_PATH" -out "$BACKUP_DIR/$BACKUP_FILE" -k "$PASSWORD" -P
+
+# Subir Vaultwarden de novo
+echo "[*] Subindo Vaultwarden..." | tee -a "$LOG_FILE"
+docker compose -f $HOME/homelab/vaultwarden/docker-compose.yml up -d
 
 # Log
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] OK Backup criado: $BACKUP_FILE" | tee -a "$LOG_FILE"
