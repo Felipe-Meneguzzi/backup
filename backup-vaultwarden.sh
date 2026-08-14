@@ -8,7 +8,7 @@
 
 set -e
 
-# Configurações
+# Configuracoes
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SEED_FILE="$SCRIPT_DIR/.backup-seed"
 DB_PATH="$HOME/homelab/vaultwarden/data/db.sqlite3"
@@ -28,7 +28,7 @@ SEED=$(cat "$SEED_FILE" | tr -d '\n')
 DATE=$(date +%Y%m%d)
 BACKUP_FILE="vaultwarden-backup-${DATE}.sqlite3.enc"
 
-# Criar diretório de backups se não existir
+# Criar diretorio de backups se nao existir
 mkdir -p "$BACKUP_DIR"
 
 # Gerar senha determinística (32 chars)
@@ -48,7 +48,10 @@ docker compose -f $HOME/homelab/vaultwarden/docker-compose.yml stop
 sleep 2
 
 # Fazer backup
-openssl enc -aes-256-cbc -pbkdf2 -salt -in "$DB_PATH" -out "$BACKUP_DIR/$BACKUP_FILE" -k "$PASSWORD" -P
+cat "$DB_PATH" | openssl enc -aes-256-cbc -pbkdf2 -salt -k "$PASSWORD" > "$BACKUP_DIR/$BACKUP_FILE"
+
+# Garante que o arquivo ta sendo criado corretamente
+chmod 644 "$BACKUP_DIR/$BACKUP_FILE"
 
 # Subir Vaultwarden de novo
 echo "[*] Subindo Vaultwarden..." | tee -a "$LOG_FILE"

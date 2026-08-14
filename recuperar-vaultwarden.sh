@@ -43,7 +43,7 @@ PASSWORD=$(echo -n "${FILENAME}${SEED}" | sha256sum | cut -c1-32)
 
 # Desencriptar
 echo "[*] Desencriptando $FILENAME..."
-openssl enc -aes-256-cbc -pbkdf2 -d -in "$BACKUP_FILE" -out db.sqlite3 -k "$PASSWORD"
+cat "$BACKUP_FILE" | openssl enc -aes-256-cbc -pbkdf2 -d -k "$PASSWORD" > db.sqlite3
 
 if [ $? -eq 0 ]; then
     echo "[OK] Database recuperado em: db.sqlite3"
